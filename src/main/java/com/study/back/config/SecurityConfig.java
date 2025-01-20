@@ -1,7 +1,9 @@
 package com.study.back.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -15,44 +17,63 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.Arrays;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Autowired
+    private Environment env;
+
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         http.csrf().disable()
                 .authorizeRequests()
-                    .antMatchers("/admin/**").hasRole("ADMIN") // /admin/** 접근은 ADMIN 권한을 가진 사용자만 가능
-                    .antMatchers("/user/**").authenticated() // /user/** 접근은 인증된 사용자만 가능
-                    .anyRequest().permitAll()
+                .antMatchers("/admin/**").hasRole("ADMIN") // /admin/** 접근은 ADMIN 권한을 가진 사용자만 가능
+                .antMatchers("/user/**").authenticated() // /user/** 접근은 인증된 사용자만 가능
+                .anyRequest().permitAll()
                 .and()
                 .formLogin() // 로그인 설정
-                    .loginPage("/login")
-                    // 로그인 처리 엔드 포인트(URL만 설정)로 지정, 실처리는  CustomUserDetailsService 에서 처리
-                    .loginProcessingUrl("/loginCheck")
-                        .usernameParameter("email")         // form에서 email을 전달하여 로그인 처리, 비번도 표기해도 되나 통상 password 사용
-                    // 로그인 성공하면 응답처리용
-                    .defaultSuccessUrl("/loginSuccess")
+                .loginPage("/login")
+                // 로그인 처리 엔드 포인트(URL만 설정)로 지정, 실처리는  CustomUserDetailsService 에서 처리
+                .loginProcessingUrl("/loginCheck")
+                .usernameParameter("email")         // form에서 email을 전달하여 로그인 처리, 비번도 표기해도 되나 통상 password 사용
+                // 로그인 성공하면 응답처리용
+                .defaultSuccessUrl("/loginSuccess")
                 .and()
                 .logout() // 로그아웃 설정
-                    // 로그아웃 처리를 위한 엔드포인트만 지정, 시큐리티 내부에서 처리됨
-                    .logoutUrl("/logout")
-                    // 로그아웃 성공하면 이동
-                    .logoutSuccessUrl("/logoutSuccess")
-                    // 세션 식별자(Session Identifier)
-                    // 서버는 JSESSIONID라는 고유 식별자를 발급하여 클라이언트(보통 웹 브라우저)에 쿠키로 전달
-                    // 로그아웃 처리나 세션 무효화 시에 사용
-                    .deleteCookies("JSESSIONID");
+                // 로그아웃 처리를 위한 엔드포인트만 지정, 시큐리티 내부에서 처리됨
+                .logoutUrl("/logout")
+                // 로그아웃 성공하면 이동
+                .logoutSuccessUrl("/logoutSuccess")
+                // 세션 식별자(Session Identifier)
+                // 서버는 JSESSIONID라는 고유 식별자를 발급하여 클라이언트(보통 웹 브라우저)에 쿠키로 전달
+                // 로그아웃 처리나 세션 무효화 시에 사용
+                .deleteCookies("JSESSIONID");
         // 필터 체인을 적용하여 요청이 들어오기 전에 CORS(크로스 도메인 처리)
         http.addFilterBefore(corsFilter(), UsernamePasswordAuthenticationFilter.class);
     }
+
     // CORS는 웹 페이지가 자신이 호스트되지 않은 도메인에서 리소스를 요청할 수 있도록 허용하는 메커니즘
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         // 자격 증명(예: 쿠키, 인증 헤더)을 포함한 요청을 허용 -> 세션 쿠키를 받겠다
         config.setAllowCredentials(true);
-        config.addAllowedOrigin("http://localhost:3000");// 프런트단 리액트 서버, 필요시 포트 변경
+        // 클라우드로 가면 EC2 서버의 IP 혹은 도메인등도 허가해야함!!
+        //config.addAllowedOrigin("http://localhost:3000");// 프런트단 리액트 서버, 필요시 포트 변경
+
+        // 여러개의 IP, 도메인등 등록-> 허가된 IP/도메인 n개일때 처리
+        String release_ip = env.getProperty("app.release_ip");
+        String release_domain = env.getProperty("app.release_domain");
+        String dev_ip     = env.getProperty("app.dev_ip");
+        // 일괄 등록
+        config.setAllowedOrigins(Arrays.asList(
+                release_ip,     // 리액트 상용 서버 ip 주소
+                release_domain, // 리액트 상용 서버 도메인
+                dev_ip          // 리액트 개발 서버 ip 주소
+        ));
+
         // 모든 헤더값 통과
         config.addAllowedHeader("*");
         // 모든 메소드 방식 통과
@@ -63,6 +84,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         source.registerCorsConfiguration("/**", config);
         return new CorsFilter(source);
     }
+
     @Bean
     public BCryptPasswordEncoder encoder() {
         return new BCryptPasswordEncoder();
